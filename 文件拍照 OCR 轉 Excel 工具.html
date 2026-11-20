@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文件拍照 OCR 轉 Excel 工具</title>
+  <!-- 載入開源 OCR 引擎 Tesseract.js v5 -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- 載入開源 Excel 處理套件 SheetJS (xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --success-hover: #15803d;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 16px;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      color: #0f172a;
+      margin-bottom: 6px;
+    }
+
+    header p {
+      font-size: 0.9rem;
+      color: #64748b;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    @media (min-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border);
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    button, .file-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+      flex: 1;
+      min-width: 130px;
+      text-align: center;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-outline {
+      background: white;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    .btn-outline:hover {
+      background: #eff6ff;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+      width: 100%;
+      margin-top: 12px;
+    }
+
+    .btn-success:hover {
+      background: var(--success-hover);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .media-box {
+      width: 100%;
+      min-height: 240px;
+      background: #f1f5f9;
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    video, img {
+      max-width: 100%;
+      max-height: 360px;
+      display: block;
+      object-fit: contain;
+    }
+
+    .placeholder-text {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .progress-container {
+      margin-top: 16px;
+      display: none;
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--primary);
+      transition: width 0.2s;
+    }
+
+    .status-text {
+      font-size: 0.85rem;
+      color: #475569;
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+
+    select {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 0.9rem;
+      background: white;
+    }
+
+    .table-wrapper {
+      width: 100%;
+      max-height: 340px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px;
+      min-width: 100px;
+    }
+
+    th {
+      background: #f1f5f9;
+      text-align: left;
+      position: sticky;
+      top: 0;
+    }
+
+    td[contenteditable="true"]:focus {
+      outline: 2px solid var(--primary);
+      background: #eff6ff;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>📄 文件拍照 OCR 轉 Excel 工具</h1>
+    <p>純瀏覽器端開源辨識（Tesseract.js + SheetJS），資料不經第三方伺服器</p>
+  </header>
+
+  <div class="grid">
+    <!-- 左側：影像擷取與辨識區 -->
+    <div class="card">
+      <h2>1. 取得文件影像</h2>
+      <div class="btn-group">
+        <button id="startCameraBtn" class="btn-outline">📷 開啟即時鏡頭</button>
+        <button id="captureBtn" class="btn-primary" style="display:none;">📸 拍攝照片</button>
+        <label for="fileInput" class="file-label btn-outline">📁 拍照 / 選擇圖片</label>
+        <input type="file" id="fileInput" accept="image/*" capture="environment">
+      </div>
+
+      <div class="media-box" id="mediaBox">
+        <span class="placeholder-text" id="placeholderText">請點擊上方按鈕開啟鏡頭拍照，或直接選擇文件圖片</span>
+        <video id="video" autoplay playsinline style="display:none;"></video>
+        <img id="previewImg" alt="文件預覽" style="display:none;">
+        <canvas id="canvas" style="display:none;"></canvas>
+      </div>
+
+      <div class="controls-row" style="margin-top: 16px;">
+        <label for="langSelect" style="font-size: 0.9rem;">辨識語言：</label>
+        <select id="langSelect">
+          <option value="chi_tra+eng" selected>繁體中文 + 英文</option>
+          <option value="chi_tra">僅繁體中文</option>
+          <option value="eng">僅英文</option>
+        </select>
+        <button id="runOcrBtn" class="btn-primary" disabled>🔍 開始提取文字</button>
+      </div>
+
+      <div class="progress-container" id="progressContainer">
+        <div class="status-text" id="statusText">準備初始化 OCR 引擎...</div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右側：結果編輯與 Excel 匯出區 -->
+    <div class="card">
+      <h2>
+        <span>2. 預覽與編輯表格</span>
+        <button id="addRowBtn" class="btn-outline" style="padding: 4px 10px; font-size: 0.8rem; flex: none; min-width: auto;">+ 新增列</button>
+      </h2>
+      
+      <div class="table-wrapper">
+        <table id="resultTable">
+          <thead>
+            <tr>
+              <th>欄位 1</th>
+              <th>欄位 2</th>
+              <th>欄位 3</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr>
+              <td contenteditable="true">辨識完成後將顯示於此</td>
+              <td contenteditable="true">點擊儲存格可直接修改</td>
+              <td contenteditable="true"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">💡 提示：系統會自動將每行文字依「空格」或「Tab」切分至不同欄位，您可直接在上方儲存格點擊修改內容。</p>
+
+      <button id="exportBtn" class="btn-success" disabled>📥 匯出為 Excel (.xlsx)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const startCameraBtn = document.getElementById('startCameraBtn');
+  const captureBtn = document.getElementById('captureBtn');
+  const fileInput = document.getElementById('fileInput');
+  const video = document.getElementById('video');
+  const previewImg = document.getElementById('previewImg');
+  const canvas = document.getElementById('canvas');
+  const placeholderText = document.getElementById('placeholderText');
+  const runOcrBtn = document.getElementById('runOcrBtn');
+  const langSelect = document.getElementById('langSelect');
+  const progressContainer = document.getElementById('progressContainer');
+  const statusText = document.getElementById('statusText');
+  const progressBar = document.getElementById('progressBar');
+  const tableBody = document.getElementById('tableBody');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const exportBtn = document.getElementById('exportBtn');
+
+  let stream = null;
+  let currentImageSource = null;
+
+  // 關閉相機串流
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    video.style.display = 'none';
+    captureBtn.style.display = 'none';
+    startCameraBtn.style.display = 'inline-flex';
+  }
+
+  // 開啟筆電或手機鏡頭
+  startCameraBtn.addEventListener('click', async () => {
+    try {
+      stopCamera();
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false
+      });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      previewImg.style.display = 'none';
+      placeholderText.style.display = 'none';
+      startCameraBtn.style.display = 'none';
+      captureBtn.style.display = 'inline-flex';
+    } catch (err) {
+      alert('無法存取鏡頭，請確認瀏覽器已授予相機權限（需在 HTTPS 或 localhost 環境下執行），或改用「拍照 / 選擇圖片」按鈕。');
+      console.error(err);
+    }
+  });
+
+  // 拍攝畫面截圖
+  captureBtn.addEventListener('click', () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const dataUrl = canvas.toDataURL('image/png');
+    previewImg.src = dataUrl;
+    previewImg.style.display = 'block';
+    currentImageSource = dataUrl;
+    
+    stopCamera();
+    runOcrBtn.disabled = false;
+  });
+
+  // 選擇本機檔案或手機原生相機拍照
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    stopCamera();
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      previewImg.src = event.target.result;
+      previewImg.style.display = 'block';
+      placeholderText.style.display = 'none';
+      currentImageSource = event.target.result;
+      runOcrBtn.disabled = false;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // 執行 Tesseract.js OCR 辨識
+  runOcrBtn.addEventListener('click', async () => {
+    if (!currentImageSource) return;
+
+    runOcrBtn.disabled = true;
+    exportBtn.disabled = true;
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '0%';
+    statusText.textContent = '正在載入開源 OCR 模型（首次執行需下載語言包，請稍候）...';
+
+    try {
+      const lang = langSelect.value;
+      const worker = await Tesseract.createWorker(lang, 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round(m.progress * 100);
+            progressBar.style.width = pct + '%';
+            statusText.textContent = `正在辨識文字中... ${pct}%`;
+          } else {
+            statusText.textContent = `處理狀態：${m.status}`;
+          }
+        }
+      });
+
+      const { data: { text } } = await worker.recognize(currentImageSource);
+      await worker.terminate();
+
+      statusText.textContent = '✅ 文字提取完成！';
+      progressBar.style.width = '100%';
+      renderTextToTable(text);
+      exportBtn.disabled = false;
+    } catch (error) {
+      statusText.textContent = '❌ 辨識發生錯誤，請確認網路連線（需載入語言模型）後重試。';
+      console.error(error);
+    } finally {
+      runOcrBtn.disabled = false;
+    }
+  });
+
+  // 將提取的純文字轉換為可編輯的 HTML 表格
+  function renderTextToTable(rawText) {
+    const lines = rawText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    tableBody.innerHTML = '';
+
+    if (lines.length === 0) {
+      tableBody.innerHTML = '<tr><td contenteditable="true">未偵測到清晰文字，請重新拍攝</td><td contenteditable="true"></td><td contenteditable="true"></td></tr>';
+      return;
+    }
+
+    // 解析每一行，以連續兩個以上空白或 Tab 作為分欄依據
+    const parsedRows = lines.map(line => line.split(/\s{2,}|\t/));
+    const maxCols = Math.max(3, ...parsedRows.map(r => r.length));
+
+    // 更新表頭欄位數
+    const theadRow = document.querySelector('#resultTable thead tr');
+    theadRow.innerHTML = '';
+    for (let c = 0; c < maxCols; c++) {
+      const th = document.createElement('th');
+      th.textContent = `欄位 ${c + 1}`;
+      theadRow.appendChild(th);
+    }
+
+    // 填入資料列
+    parsedRows.forEach(cols => {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < maxCols; c++) {
+        const td = document.createElement('td');
+        td.contentEditable = 'true';
+        td.textContent = cols[c] || '';
+        tr.appendChild(td);
+      }
+      tableBody.appendChild(tr);
+    });
+  }
+
+  // 手動新增空白列
+  addRowBtn.addEventListener('click', () => {
+    const colCount = document.querySelectorAll('#resultTable thead th').length;
+    const tr = document.createElement('tr');
+    for (let i = 0; i < colCount; i++) {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      tr.appendChild(td);
+    }
+    tableBody.appendChild(tr);
+    exportBtn.disabled = false;
+  });
+
+  // 匯出為 .xlsx 檔案
+  exportBtn.addEventListener('click', () => {
+    const table = document.getElementById('resultTable');
+    // 使用 SheetJS 將 HTML Table 直接轉換為 Workbook
+    const wb = XLSX.utils.table_to_book(table, { sheet: "OCR提取結果" });
+    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+    XLSX.writeFile(wb, `文件辨識結果_${timestamp}.xlsx`);
+  });
+</script>
+
+</body>
+</html>
